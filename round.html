@@ -245,6 +245,65 @@
     .history-item .counts .u { color: var(--neon-cyan); }
     .history-item .counts .t { color: var(--neon-yellow); }
 
+    /* ── Episode groups ── */
+    .episode-group {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .episode-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: rgba(255,45,120,0.08);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .episode-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--neon-pink);
+      letter-spacing: 0.05em;
+    }
+    .episode-location {
+      font-size: 0.72rem;
+      color: #666;
+    }
+    .btn-download {
+      padding: 5px 12px;
+      background: rgba(0,245,255,0.1);
+      border: 1px solid var(--neon-cyan);
+      border-radius: 6px;
+      color: var(--neon-cyan);
+      font-size: 0.7rem;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+    }
+    .btn-download:hover { background: rgba(0,245,255,0.2); }
+    .episode-participants {
+      padding: 8px 0;
+    }
+    .participant-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.82rem;
+    }
+    .participant-row:last-child { border-bottom: none; }
+    .participant-row .pname { color: #ccc; }
+    .participant-row .pscore {
+      display: flex; gap: 12px;
+      font-size: 0.75rem;
+    }
+    .participant-row .pscore .u { color: var(--neon-cyan); }
+    .participant-row .pscore .t { color: var(--neon-yellow); }
+
     /* ── Server URL config ── */
     #server-config {
       width: 100%;
@@ -313,11 +372,19 @@
 <div id="host-panel">
 
   <div class="host-section">
+    <h2>Bölüm Bilgisi</h2>
+    <label>Bölüm numarası</label>
+    <input type="text" id="input-episode" placeholder="1, 2, 3 ..." />
+    <label>Lokasyon</label>
+    <input type="text" id="input-location" placeholder="Beşiktaş, Paris ..." />
+  </div>
+
+  <div class="host-section">
     <h2>Yeni Round</h2>
     <label>Katılımcı adı</label>
     <input type="text" id="input-name" placeholder="Ahmet, Buse, ..." />
     <label>Tetikleyici emoji</label>
-    <input type="text" id="input-emoji" placeholder="🎵" value="🎵" />
+    <input type="text" id="input-emoji" placeholder="🤍" value="🤍" />
     <button class="btn btn-start" id="btn-start">▶ Round Başlat</button>
   </div>
 
@@ -327,7 +394,7 @@
   </div>
 
   <div class="host-section">
-    <h2>Geçmiş Roundlar</h2>
+    <h2>Bölümlere Göre Katılımcılar</h2>
     <div id="history-list"><p style="color:#444;font-size:.8rem">Henüz tamamlanan round yok</p></div>
   </div>
 
@@ -375,11 +442,13 @@
   const dotYt  = document.getElementById('dot-yt');
   const dotTt  = document.getElementById('dot-tt');
 
-  const btnStart  = document.getElementById('btn-start');
-  const btnStop   = document.getElementById('btn-stop');
-  const inputName = document.getElementById('input-name');
-  const inputEmoji= document.getElementById('input-emoji');
-  const historyEl = document.getElementById('history-list');
+  const btnStart     = document.getElementById('btn-start');
+  const btnStop      = document.getElementById('btn-stop');
+  const inputName    = document.getElementById('input-name');
+  const inputEmoji   = document.getElementById('input-emoji');
+  const inputEpisode = document.getElementById('input-episode');
+  const inputLocation= document.getElementById('input-location');
+  const historyEl    = document.getElementById('history-list');
 
   const serverUrlEl = document.getElementById('server-url');
   const pingEl      = document.getElementById('server-ping');
@@ -471,31 +540,74 @@
         const finished = rounds.filter(r => !r.active);
         if (!finished.length) return;
 
-        historyEl.innerHTML = finished.map(r => `
-          <div class="history-item">
-            <div class="name"><span>${r.emoji || ''}</span> ${escHtml(r.participantName || '')}</div>
-            <div class="counts">
-              <span class="u">👥 ${(r.uniqueCount||0).toLocaleString('tr-TR')} kişi</span>
-              <span class="t">💬 ${(r.totalCount||0).toLocaleString('tr-TR')} emoji</span>
+        // Bölümlere göre grupla
+        const episodes = {};
+        for (const round of finished) {
+          const ep = round.episode || '—';
+          if (!episodes[ep]) episodes[ep] = { location: round.location || '', rounds: [] };
+          episodes[ep].rounds.push(round);
+        }
+
+        historyEl.innerHTML = Object.entries(episodes).map(([ep, epData]) => {
+          const participantRows = epData.rounds.map(r => `
+            <div class="participant-row">
+              <span class="pname">${r.emoji || '🤍'} ${escHtml(r.participantName || '')}</span>
+              <span class="pscore">
+                <span class="u">👥 ${(r.uniqueCount||0).toLocaleString('tr-TR')}</span>
+                <span class="t">💬 ${(r.totalCount||0).toLocaleString('tr-TR')}</span>
+              </span>
             </div>
-          </div>
-        `).join('');
+          `).join('');
+
+          return `
+            <div class="episode-group">
+              <div class="episode-header">
+                <div>
+                  <div class="episode-title">BÖLÜM ${escHtml(String(ep))}</div>
+                  ${epData.location ? `<div class="episode-location">📍 ${escHtml(epData.location)}</div>` : ''}
+                </div>
+                <button class="btn-download" onclick="downloadCSV('${ep}')">⬇ CSV İndir</button>
+              </div>
+              <div class="episode-participants">${participantRows}</div>
+            </div>
+          `;
+        }).join('');
+
+        // CSV verisi için global referans
+        window._episodeData = episodes;
       } catch { /* backend not ready */ }
     }
+
+    window.downloadCSV = function(ep) {
+      const epData = window._episodeData?.[ep];
+      if (!epData) return;
+      const rows = [['Katılımcı', 'Unique Kişi', 'Toplam Emoji', 'Bölüm', 'Lokasyon']];
+      for (const r of epData.rounds) {
+        rows.push([r.participantName || '', r.uniqueCount || 0, r.totalCount || 0, ep, epData.location || '']);
+      }
+      const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `bolum-${ep}-${epData.location || 'katilimcilar'}.csv`;
+      a.click();
+    };
     setInterval(loadHistory, 8000);
     loadHistory();
 
     // ── Start / Stop ────────────────────────────────────────────────────────
     btnStart.addEventListener('click', async () => {
-      const name  = inputName.value.trim() || 'Katılımcı';
-      const emoji = inputEmoji.value.trim() || '🎵';
+      const name     = inputName.value.trim() || 'Katılımcı';
+      const emoji    = inputEmoji.value.trim() || '🤍';
+      const episode  = inputEpisode.value.trim();
+      const location = inputLocation.value.trim();
       btnStart.disabled = true;
       btnStart.textContent = '⏳ Başlatılıyor...';
       try {
         const r = await fetch(`${serverUrl()}/round/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ participantName: name, emoji }),
+          body: JSON.stringify({ participantName: name, emoji, episode, location }),
         });
         const data = await r.json();
         if (data.error) alert('Hata: ' + data.error);

@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const { google } = require('googleapis');
-const { WebcastPushConnection } = require('tiktok-live-connector');
+const WebSocket = require('ws');
 
 // ── Firebase init ──────────────────────────────────────────────────────────────
 const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './firebase-service-account.json');
@@ -14,7 +14,8 @@ admin.initializeApp({
 const db = admin.database();
 
 // ── Config ─────────────────────────────────────────────────────────────────────
-const TRIGGER_EMOJI = process.env.TRIGGER_EMOJI || '🎵';
+const DEFAULT_EMOJI = process.env.TRIGGER_EMOJI || '🤍';
+let TRIGGER_EMOJI = DEFAULT_EMOJI; // round başlayınca güncellenir
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -145,61 +146,73 @@ function stopYouTubeChat() {
 let ttConnection = null;
 
 async function startTikTokChat() {
-  if (!process.env.TIKTOK_USERNAME) {
-    console.log('[TT] TIKTOK_USERNAME tanımlı değil, TikTok atlanıyor.');
+  if (!process.env.TIKTOK_USERNAME || !process.env.EULERSTREAM_API_KEY) {
+    console.log('[TT] TIKTOK_USERNAME veya EULERSTREAM_API_KEY eksik, atlanıyor.');
     return;
   }
 
-  try {
-    ttConnection = new WebcastPushConnection(process.env.TIKTOK_USERNAME, {
-      enableExtendedGiftInfo: false,
-      enableWebsocketUpgrade: true,
-      requestPollingIntervalMs: 2000,
+  const wsUrl = `wss://ws.eulerstream.com?uniqueId=${encodeURIComponent(process.env.TIKTOK_USERNAME)}&apiKey=${encodeURIComponent(process.env.EULERSTREAM_API_KEY)}`;
+
+  function connect() {
+    if (ttConnection) return;
+
+    console.log('[TT] Bağlanılıyor...');
+    const ws = new WebSocket(wsUrl);
+    ttConnection = ws;
+
+    ws.on('open', () => {
+      console.log('[TT] Bağlandı:', process.env.TIKTOK_USERNAME);
     });
 
-    ttConnection.on('chat', async (data) => {
-      if (!roundActive) return;
-      const text = data.comment || '';
-      if (text.includes(TRIGGER_EMOJI)) {
-        const userId = String(data.userId || data.uniqueId);
-        const displayName = data.nickname || data.uniqueId;
-        await recordHit('tiktok', `tt_${userId}`, displayName);
-        console.log(`[TT] Hit: ${displayName} (${userId})`);
-      }
+    ws.on('message', async (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        for (const evt of (msg.messages || [])) {
+          if (evt.type !== 'WebcastChatMessage') continue;
+          if (!roundActive) continue;
+          const d = evt.data || {};
+          const comment = d.comment || '';
+          if (!comment.includes(TRIGGER_EMOJI)) continue;
+          const user = d.user || {};
+          const userId = String(user.userId || user.openId || Math.random());
+          const displayName = user.nickname || userId;
+          await recordHit('tiktok', `tt_${userId}`, displayName);
+          console.log(`[TT] Hit: ${displayName} — "${comment}"`);
+        }
+      } catch (_) {}
     });
 
-    ttConnection.on('disconnected', () => {
-      console.log('[TT] Bağlantı kesildi.');
+    ws.on('close', () => {
+      console.log('[TT] Bağlantı kesildi, 10s sonra yeniden deneniyor...');
+      ttConnection = null;
+      if (roundActive) setTimeout(connect, 10_000);
+    });
+
+    ws.on('error', (err) => {
+      console.warn('[TT] WebSocket hatası:', err.message);
       ttConnection = null;
     });
-
-    ttConnection.on('error', (err) => {
-      console.warn('[TT] Hata:', err.message || err);
-    });
-
-    await ttConnection.connect();
-    console.log('[TT] Bağlandı:', process.env.TIKTOK_USERNAME);
-  } catch (err) {
-    console.warn('[TT] Bağlanamadı (yayın kapalı olabilir):', err.message);
-    ttConnection = null;
   }
+
+  connect();
 }
 
 function stopTikTokChat() {
   if (ttConnection) {
-    try { ttConnection.disconnect(); } catch (_) {}
+    try { ttConnection.close(); } catch (_) {}
     ttConnection = null;
   }
 }
 
 // ── Round management ───────────────────────────────────────────────────────────
-async function startRound(participantName, emoji) {
+async function startRound(participantName, emoji, episode, location) {
   if (roundActive) {
     console.log('[Round] Zaten aktif round var, önce bitirin.');
     return { error: 'Round zaten aktif' };
   }
 
-  const triggerEmoji = emoji || TRIGGER_EMOJI;
+  const triggerEmoji = emoji || DEFAULT_EMOJI;
+  TRIGGER_EMOJI = triggerEmoji; // chat dinleyicisini güncelle
   const roundRef = db.ref('rounds').push();
   currentRoundId = roundRef.key;
   roundActive = true;
@@ -207,6 +220,8 @@ async function startRound(participantName, emoji) {
   const roundData = {
     participantName: participantName || 'Katılımcı',
     emoji: triggerEmoji,
+    episode: episode || '',
+    location: location || '',
     startTime: Date.now(),
     active: true,
     totalCount: 0,
@@ -258,9 +273,13 @@ async function stopRound() {
 }
 
 // ── Express API ────────────────────────────────────────────────────────────────
+const path = require('path');
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// round.html'i doğrudan serve et (http://localhost:3001/ ve /round.html)
+app.use(express.static(path.join(__dirname, '..')));
 
 app.get('/status', (req, res) => {
   res.json({
@@ -273,8 +292,8 @@ app.get('/status', (req, res) => {
 });
 
 app.post('/round/start', async (req, res) => {
-  const { participantName, emoji } = req.body;
-  const result = await startRound(participantName, emoji);
+  const { participantName, emoji, episode, location } = req.body;
+  const result = await startRound(participantName, emoji, episode, location);
   res.json(result);
 });
 
