@@ -106,6 +106,7 @@
   }
   .digits.tick{ transform:scale(1.04); }
   .digits.low{ color:var(--magenta); text-shadow:0 0 40px rgba(255,45,111,0.6), 0 0 120px rgba(255,45,111,0.25);}
+  .digits.long{ font-size:clamp(36px, 13vw, 150px); }
   .bas-screen{
     position:fixed; inset:0;
     background:var(--flash);
@@ -297,6 +298,18 @@
     margin:0;
   }
   .val-input:focus{ outline:none; }
+
+  .duration-inputs{ display:flex; gap:16px; }
+  .dur-unit{ display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .val-input.small{ width:56px; font-size:22px; }
+  .unit-label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--paper);
+    opacity:0.5;
+  }
   .btn-row{ display:flex; gap:12px; margin-top:6px; }
   .btn{
     flex:1;
@@ -346,7 +359,7 @@
       <p class="info-text">Geri sayım bittiğinde @harbidensamet hesaplarından eşzamanlı canlı yayın aktif hale gelir. İzleyiciler "oylama başlamıştır" uyarısının ardından oy verir ve yapay zeka oyları sayar. Ardından kazanan, anlık ve şeffaf bir şekilde herkesin gözü önünde belirlenir.</p>
     </div>
   </div>
-  <div class="eyebrow"><span class="dot"></span>DÜET İÇİN BAS</div>
+  <div class="eyebrow"><span class="dot"></span>DÜET İÇİN BAS'A KALAN SÜRE</div>
   <div class="digits" id="digits">1:00</div>
   <div class="round" id="round">TUR 1</div>
   <div class="brandmark">@harbidensamet</div>
@@ -368,11 +381,20 @@
     <p class="host-sub">Bu ekran sadece sende — izleyiciler bunu görmez</p>
 
     <div class="field-row">
-      <span class="field-label">SÜRE (dk)</span>
-      <div class="stepper">
-        <button id="durMinus">–</button>
-        <input type="number" class="val-input" id="durVal" value="1" min="1" max="99">
-        <button id="durPlus">+</button>
+      <span class="field-label">SÜRE</span>
+      <div class="duration-inputs">
+        <div class="dur-unit">
+          <input type="number" class="val-input small" id="durDays" value="0" min="0" max="60">
+          <span class="unit-label">gün</span>
+        </div>
+        <div class="dur-unit">
+          <input type="number" class="val-input small" id="durHours" value="0" min="0" max="23">
+          <span class="unit-label">saat</span>
+        </div>
+        <div class="dur-unit">
+          <input type="number" class="val-input small" id="durMins" value="1" min="0" max="59">
+          <span class="unit-label">dk</span>
+        </div>
       </div>
     </div>
 
@@ -427,6 +449,19 @@ async function writeState(state){
 }
 
 function formatTime(totalSeconds){
+  if(totalSeconds >= 86400){
+    const d = Math.floor(totalSeconds / 86400);
+    const h = Math.floor((totalSeconds % 86400) / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return d + 'G ' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+  if(totalSeconds >= 3600){
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return m + ':' + String(s).padStart(2,'0');
@@ -438,6 +473,7 @@ function renderViewer(state){
   if(!state.running || !state.endTime){
     digitsEl.classList.remove('low');
     digitsEl.textContent = formatTime(state.durationSec);
+    digitsEl.classList.toggle('long', state.durationSec >= 3600);
     if(basScreen.classList.contains('show')) hideBas();
     return;
   }
@@ -461,6 +497,7 @@ function renderViewer(state){
   if(remaining !== lastShownSecond){
     lastShownSecond = remaining;
     digitsEl.textContent = formatTime(remaining);
+    digitsEl.classList.toggle('long', remaining >= 3600);
     digitsEl.classList.add('tick');
     setTimeout(()=>digitsEl.classList.remove('tick'), 120);
   }
@@ -520,26 +557,47 @@ if(!isHost){
   document.getElementById('app').classList.add('hidden');
   document.getElementById('host').classList.add('active');
 
-  let durationMin = 1;
   const round = 1;
-
-  const durVal = document.getElementById('durVal');
   const hostStatus = document.getElementById('hostStatus');
+  const durDays = document.getElementById('durDays');
+  const durHours = document.getElementById('durHours');
+  const durMins = document.getElementById('durMins');
 
-  function setDuration(v){
-    v = Math.max(1, Math.min(99, Math.round(v) || 1));
-    durationMin = v;
-    durVal.value = v;
+  function clampInput(el, min, max, fallback){
+    let v = parseInt(el.value);
+    if(isNaN(v)) v = fallback;
+    v = Math.max(min, Math.min(max, v));
+    el.value = v;
+    return v;
   }
 
-  document.getElementById('durMinus').onclick = ()=> setDuration(durationMin - 1);
-  document.getElementById('durPlus').onclick = ()=> setDuration(durationMin + 1);
-  durVal.addEventListener('input', ()=>{ durationMin = parseInt(durVal.value) || 1; });
-  durVal.addEventListener('blur', ()=> setDuration(durationMin));
-  durVal.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ setDuration(durationMin); durVal.blur(); } });
+  function getDurationSec(){
+    const d = clampInput(durDays, 0, 60, 0);
+    const h = clampInput(durHours, 0, 23, 0);
+    const m = clampInput(durMins, 0, 59, 0);
+    let total = d*86400 + h*3600 + m*60;
+    if(total < 5) total = 5;
+    return total;
+  }
+
+  [durDays, durHours, durMins].forEach(el=>{
+    el.addEventListener('blur', getDurationSec);
+    el.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ getDurationSec(); el.blur(); } });
+  });
+
+  function describeDuration(totalSec){
+    const d = Math.floor(totalSec/86400);
+    const h = Math.floor((totalSec%86400)/3600);
+    const m = Math.floor((totalSec%3600)/60);
+    const parts = [];
+    if(d) parts.push(d+'g');
+    if(h) parts.push(h+'s');
+    if(m || parts.length===0) parts.push(m+'dk');
+    return parts.join(' ');
+  }
 
   document.getElementById('startBtn').onclick = async ()=>{
-    const durationSec = durationMin * 60;
+    const durationSec = getDurationSec();
     const state = {
       endTime: Date.now() + durationSec*1000,
       durationSec: durationSec,
@@ -547,7 +605,7 @@ if(!isHost){
       round: Date.now()
     };
     await writeState(state);
-    hostStatus.textContent = 'çalışıyor — ' + durationMin + ' dk';
+    hostStatus.textContent = 'çalışıyor — ' + describeDuration(durationSec);
   };
 
   document.getElementById('stopBtn').onclick = async ()=>{
@@ -558,7 +616,8 @@ if(!isHost){
   };
 
   document.getElementById('resetBtn').onclick = async ()=>{
-    const state = { endTime:null, durationSec:durationMin*60, running:false, round:round };
+    const durationSec = getDurationSec();
+    const state = { endTime:null, durationSec:durationSec, running:false, round:round };
     await writeState(state);
     hostStatus.textContent = 'sıfırlandı';
   };
