@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Düet İçin Bas — Round Takip</title>
+  <style>
+    :root {
+      --neon-pink:   #ff2d78;
+      --neon-cyan:   #00f5ff;
+      --neon-yellow: #ffe600;
+      --bg:          #0a0a0f;
+      --panel:       #12121a;
+      --border:      #1e1e2e;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: #fff;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: clamp(1.2rem, 4vw, 1.8rem);
+      letter-spacing: 0.05em;
+      color: var(--neon-pink);
+      text-shadow: 0 0 12px var(--neon-pink);
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 0.78rem;
+      color: #555;
+      margin-bottom: 24px;
+      letter-spacing: 0.08em;
+    }
+
+    /* ── Status bar ── */
+    #status-bar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      font-size: 0.72rem;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #333;
+      display: inline-block;
+      margin-right: 4px;
+    }
+    .dot.on  { background: #0f0; box-shadow: 0 0 6px #0f0; }
+    .dot.off { background: #f00; }
+
+    /* ── Live counter card ── */
+    #live-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 32px;
+      width: 100%;
+      max-width: 480px;
+      text-align: center;
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    #live-card.active {
+      border-color: var(--neon-pink);
+      box-shadow: 0 0 24px rgba(255,45,120,0.25), inset 0 0 40px rgba(255,45,120,0.04);
+    }
+
+    #round-label {
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    #participant-name {
+      font-size: clamp(1.4rem, 5vw, 2.2rem);
+      font-weight: 700;
+      color: var(--neon-cyan);
+      text-shadow: 0 0 16px var(--neon-cyan);
+      margin-bottom: 4px;
+      min-height: 2.4rem;
+    }
+    #round-emoji {
+      font-size: 2rem;
+      margin-bottom: 16px;
+      min-height: 2.4rem;
+    }
+
+    .metrics {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .metric {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 14px 20px;
+      min-width: 120px;
+      flex: 1;
+    }
+    .metric .val {
+      font-size: clamp(2rem, 7vw, 3rem);
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .metric.unique .val { color: var(--neon-cyan);   text-shadow: 0 0 12px var(--neon-cyan); }
+    .metric.total  .val { color: var(--neon-yellow); text-shadow: 0 0 12px var(--neon-yellow); }
+    .metric .lbl {
+      font-size: 0.68rem;
+      color: #555;
+      letter-spacing: 0.08em;
+    }
+
+    #idle-msg {
+      color: #444;
+      font-size: 0.9rem;
+      margin-top: 8px;
+    }
+
+    /* ── Host panel ── */
+    #host-panel {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      width: 100%;
+      max-width: 480px;
+    }
+    #host-panel.visible { display: flex; }
+
+    .host-section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .host-section h2 {
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      color: #555;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.72rem;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0d0d14;
+      border: 1px solid #222;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.9rem;
+      outline: none;
+      margin-bottom: 12px;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: var(--neon-cyan); }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: opacity 0.15s, transform 0.1s;
+      touch-action: manipulation;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+    .btn-start {
+      background: linear-gradient(135deg, #ff2d78, #c4005a);
+      color: #fff;
+      box-shadow: 0 0 20px rgba(255,45,120,0.4);
+    }
+    .btn-stop {
+      background: linear-gradient(135deg, #222, #111);
+      color: #888;
+      border: 1px solid #333;
+    }
+    .btn-stop.armed {
+      background: linear-gradient(135deg, #1a1a2e, #0d0d1a);
+      color: var(--neon-cyan);
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 16px rgba(0,245,255,0.2);
+    }
+
+    /* ── History ── */
+    #history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .history-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid #1a1a2a;
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .history-item .name {
+      font-size: 0.9rem;
+      color: #ddd;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .history-item .counts {
+      font-size: 0.78rem;
+      color: #555;
+      text-align: right;
+    }
+    .history-item .counts span {
+      display: block;
+    }
+    .history-item .counts .u { color: var(--neon-cyan); }
+    .history-item .counts .t { color: var(--neon-yellow); }
+
+    /* ── Server URL config ── */
+    #server-config {
+      width: 100%;
+      max-width: 480px;
+      margin-bottom: 12px;
+    }
+    #server-config summary {
+      font-size: 0.72rem;
+      color: #444;
+      cursor: pointer;
+      user-select: none;
+      letter-spacing: 0.08em;
+    }
+    #server-config input {
+      margin-top: 8px;
+    }
+
+    /* ── Ping ── */
+    #server-ping {
+      font-size: 0.68rem;
+      color: #333;
+      margin-bottom: 16px;
+    }
+    #server-ping.ok  { color: #0a0; }
+    #server-ping.err { color: #f44; }
+  </style>
+</head>
+<body>
+
+<h1>🎵 Düet İçin Bas</h1>
+<p class="subtitle">ROUND TAKİP SİSTEMİ</p>
+
+<!-- Status bar -->
+<div id="status-bar">
+  <span><span class="dot" id="dot-yt"></span> YouTube</span>
+  <span><span class="dot" id="dot-tt"></span> TikTok</span>
+  <span id="status-round" style="color:#555">● Bekleniyor</span>
+</div>
+
+<!-- Live counter -->
+<div id="live-card">
+  <div id="round-label">ŞU AN</div>
+  <div id="participant-name"></div>
+  <div id="round-emoji"></div>
+  <div id="idle-msg">Henüz aktif round yok</div>
+  <div class="metrics" id="metrics" style="display:none">
+    <div class="metric unique">
+      <div class="val" id="val-unique">0</div>
+      <div class="lbl">👥 KİŞİ KATILDI</div>
+    </div>
+    <div class="metric total">
+      <div class="val" id="val-total">0</div>
+      <div class="lbl">💬 EMOJİ GÖNDERİLDİ</div>
+    </div>
+  </div>
+</div>
+
+<!-- Server URL config (host+viewer can point to local backend) -->
+<details id="server-config">
+  <summary>⚙️ Backend bağlantısı</summary>
+  <input type="text" id="server-url" placeholder="http://localhost:3001" value="http://localhost:3001" />
+  <p id="server-ping">Bağlantı kontrol ediliyor...</p>
+</details>
+
+<!-- HOST PANEL (only shown when ?host=1) -->
+<div id="host-panel">
+
+  <div class="host-section">
+    <h2>Yeni Round</h2>
+    <label>Katılımcı adı</label>
+    <input type="text" id="input-name" placeholder="Ahmet, Buse, ..." />
+    <label>Tetikleyici emoji</label>
+    <input type="text" id="input-emoji" placeholder="🎵" value="🎵" />
+    <button class="btn btn-start" id="btn-start">▶ Round Başlat</button>
+  </div>
+
+  <div class="host-section">
+    <h2>Aktif Round</h2>
+    <button class="btn btn-stop" id="btn-stop" disabled>◼ Round Bitir</button>
+  </div>
+
+  <div class="host-section">
+    <h2>Geçmiş Roundlar</h2>
+    <div id="history-list"><p style="color:#444;font-size:.8rem">Henüz tamamlanan round yok</p></div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
+  // ── Firebase config — kendi projenizin config'i buraya ────────────────────
+  // Firebase Console → Project Settings → Your apps → Config snippet
+  const firebaseConfig = {
+    apiKey:            "REPLACE_WITH_YOUR_API_KEY",
+    authDomain:        "REPLACE_WITH_YOUR_AUTH_DOMAIN",
+    databaseURL:       "REPLACE_WITH_YOUR_DATABASE_URL",
+    projectId:         "REPLACE_WITH_YOUR_PROJECT_ID",
+    storageBucket:     "REPLACE_WITH_YOUR_STORAGE_BUCKET",
+    messagingSenderId: "REPLACE_WITH_YOUR_MESSAGING_SENDER_ID",
+    appId:             "REPLACE_WITH_YOUR_APP_ID",
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const isHost = new URLSearchParams(location.search).has('host');
+  if (isHost) document.getElementById('host-panel').classList.add('visible');
+
+  let app, db;
+  try {
+    app = initializeApp(firebaseConfig);
+    db  = getDatabase(app);
+  } catch (e) {
+    console.warn('Firebase init hatası — config henüz ayarlanmamış:', e.message);
+  }
+
+  // ── UI refs ──────────────────────────────────────────────────────────────
+  const liveCard      = document.getElementById('live-card');
+  const participantEl = document.getElementById('participant-name');
+  const emojiEl       = document.getElementById('round-emoji');
+  const idleMsg       = document.getElementById('idle-msg');
+  const metricsEl     = document.getElementById('metrics');
+  const valUnique     = document.getElementById('val-unique');
+  const valTotal      = document.getElementById('val-total');
+  const statusRound   = document.getElementById('status-round');
+
+  const dotYt  = document.getElementById('dot-yt');
+  const dotTt  = document.getElementById('dot-tt');
+
+  const btnStart  = document.getElementById('btn-start');
+  const btnStop   = document.getElementById('btn-stop');
+  const inputName = document.getElementById('input-name');
+  const inputEmoji= document.getElementById('input-emoji');
+  const historyEl = document.getElementById('history-list');
+
+  const serverUrlEl = document.getElementById('server-url');
+  const pingEl      = document.getElementById('server-ping');
+
+  function serverUrl() { return (serverUrlEl.value || 'http://localhost:3001').replace(/\/$/, ''); }
+
+  // ── Server ping & status polling ─────────────────────────────────────────
+  async function pingServer() {
+    try {
+      const r = await fetch(`${serverUrl()}/status`, { signal: AbortSignal.timeout(3000) });
+      const data = await r.json();
+      pingEl.textContent = '● Backend bağlı';
+      pingEl.className = 'ok';
+      dotYt.className = 'dot ' + (data.youtube ? 'on' : 'off');
+      dotTt.className = 'dot ' + (data.tiktok  ? 'on' : 'off');
+    } catch {
+      pingEl.textContent = '● Backend bağlanamıyor — node server/index.js çalışıyor mu?';
+      pingEl.className = 'err';
+      dotYt.className = 'dot off';
+      dotTt.className = 'dot off';
+    }
+  }
+  setInterval(pingServer, 5000);
+  pingServer();
+
+  // ── Firebase: currentRound + live updates ────────────────────────────────
+  let activeRoundRef = null;
+
+  function showIdle() {
+    liveCard.classList.remove('active');
+    participantEl.textContent = '';
+    emojiEl.textContent = '';
+    idleMsg.style.display = '';
+    metricsEl.style.display = 'none';
+    statusRound.textContent = '● Bekleniyor';
+    statusRound.style.color = '#555';
+    if (isHost) {
+      btnStart.disabled = false;
+      btnStop.disabled  = true;
+      btnStop.classList.remove('armed');
+    }
+  }
+
+  function showActive(roundData) {
+    liveCard.classList.add('active');
+    participantEl.textContent = roundData.participantName || '';
+    emojiEl.textContent       = roundData.emoji || '';
+    idleMsg.style.display     = 'none';
+    metricsEl.style.display   = '';
+    statusRound.textContent   = '🔴 CANLI ROUND';
+    statusRound.style.color   = '#ff2d78';
+    if (isHost) {
+      btnStart.disabled = true;
+      btnStop.disabled  = false;
+      btnStop.classList.add('armed');
+    }
+  }
+
+  function updateCounts(uniqueCount, totalCount) {
+    valUnique.textContent = (uniqueCount || 0).toLocaleString('tr-TR');
+    valTotal.textContent  = (totalCount  || 0).toLocaleString('tr-TR');
+  }
+
+  if (!db) { showIdle(); }
+  else onValue(ref(db, 'currentRound'), (snap) => {
+    const roundId = snap.val();
+
+    // Detach previous listener
+    if (activeRoundRef) { off(activeRoundRef); activeRoundRef = null; }
+
+    if (!roundId) { showIdle(); return; }
+
+    activeRoundRef = ref(db, `rounds/${roundId}`);
+    onValue(activeRoundRef, (roundSnap) => {
+      const data = roundSnap.val();
+      if (!data) { showIdle(); return; }
+      showActive(data);
+      updateCounts(data.uniqueCount, data.totalCount);
+    });
+  });
+
+
+  // ── History ──────────────────────────────────────────────────────────────
+  if (isHost) {
+    async function loadHistory() {
+      try {
+        const r = await fetch(`${serverUrl()}/rounds`);
+        const rounds = await r.json();
+        const finished = rounds.filter(r => !r.active);
+        if (!finished.length) return;
+
+        historyEl.innerHTML = finished.map(r => `
+          <div class="history-item">
+            <div class="name"><span>${r.emoji || ''}</span> ${escHtml(r.participantName || '')}</div>
+            <div class="counts">
+              <span class="u">👥 ${(r.uniqueCount||0).toLocaleString('tr-TR')} kişi</span>
+              <span class="t">💬 ${(r.totalCount||0).toLocaleString('tr-TR')} emoji</span>
+            </div>
+          </div>
+        `).join('');
+      } catch { /* backend not ready */ }
+    }
+    setInterval(loadHistory, 8000);
+    loadHistory();
+
+    // ── Start / Stop ────────────────────────────────────────────────────────
+    btnStart.addEventListener('click', async () => {
+      const name  = inputName.value.trim() || 'Katılımcı';
+      const emoji = inputEmoji.value.trim() || '🎵';
+      btnStart.disabled = true;
+      btnStart.textContent = '⏳ Başlatılıyor...';
+      try {
+        const r = await fetch(`${serverUrl()}/round/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantName: name, emoji }),
+        });
+        const data = await r.json();
+        if (data.error) alert('Hata: ' + data.error);
+        else inputName.value = '';
+      } catch (e) {
+        alert('Backend\'e ulaşılamıyor. Server çalışıyor mu?\n' + e.message);
+        btnStart.disabled = false;
+      }
+      btnStart.textContent = '▶ Round Başlat';
+    });
+
+    btnStop.addEventListener('click', async () => {
+      if (!confirm('Round\'u bitirmek istediğinizden emin misiniz?')) return;
+      btnStop.disabled = true;
+      btnStop.textContent = '⏳ Bitiriliyor...';
+      try {
+        const r = await fetch(`${serverUrl()}/round/stop`, { method: 'POST' });
+        const data = await r.json();
+        if (data.error) alert('Hata: ' + data.error);
+        else {
+          // Sonucu bir anlığına göster
+          setTimeout(loadHistory, 500);
+        }
+      } catch (e) {
+        alert('Backend\'e ulaşılamıyor.\n' + e.message);
+      }
+      btnStop.textContent = '◼ Round Bitir';
+    });
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>
