@@ -28,8 +28,8 @@
     position:relative;
     width:100vw; height:100vh;
     display:flex; flex-direction:column;
-    align-items:center; justify-content:space-evenly;
-    gap:0;
+    align-items:center; justify-content:center;
+    gap:20px;
     padding:20px 16px;
     box-sizing:border-box;
   }
@@ -44,14 +44,11 @@
   .info-panel{
     position:relative;
     width:min(720px, 90vw);
-    max-height:36vh;
-    overflow-y:auto;
     background:var(--asphalt-2);
     border:1px solid var(--line);
     border-radius:16px;
     padding:18px 22px;
     z-index:5;
-    flex-shrink:1;
   }
   .info-block{ margin-bottom:18px; }
   .info-block:last-child{ margin-bottom:0; }
@@ -216,7 +213,7 @@
     100%{ transform:translate(-50%,-50%) translate(var(--dx), var(--dy)) scale(0.25); opacity:0; }
   }
   .brandmark{
-    position:fixed; bottom:26px; left:0; right:0;
+    position:relative;
     text-align:center;
     font-family:'JetBrains Mono', monospace;
     font-size:clamp(10px,1.8vw,13px);
