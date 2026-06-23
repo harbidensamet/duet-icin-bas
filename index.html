@@ -107,7 +107,7 @@
     text-transform:uppercase;
     color:var(--asphalt);
     opacity:0.75;
-    margin-top:18px;
+    margin-top:56px;
   }
   .bas-screen.show .bas-title,
   .bas-screen.show .bas-sub{ color:var(--paper); }
@@ -129,6 +129,22 @@
   @keyframes ringOut{
     0%{ width:10px; height:10px; opacity:0.9; }
     100%{ width:140vmax; height:140vmax; opacity:0; }
+  }
+  .firework-layer{
+    position:absolute; inset:0;
+    overflow:hidden;
+    pointer-events:none;
+  }
+  .spark{
+    position:absolute;
+    width:9px; height:9px;
+    border-radius:50%;
+    left:0; top:0;
+    animation:sparkFly 900ms ease-out forwards;
+  }
+  @keyframes sparkFly{
+    0%{ transform:translate(-50%,-50%) translate(0,0) scale(1); opacity:1; }
+    100%{ transform:translate(-50%,-50%) translate(var(--dx), var(--dy)) scale(0.25); opacity:0; }
   }
   .brandmark{
     position:fixed; bottom:26px; left:0; right:0;
@@ -244,6 +260,7 @@
 </div>
 
 <div class="bas-screen" id="basScreen">
+  <div class="firework-layer" id="fireworkLayer"></div>
   <div class="ring"></div>
   <div class="bas-text">
     <div class="bas-title">DÜET İÇİN<br>BAŞLIYOR</div>
@@ -327,11 +344,16 @@ function renderViewer(state){
   if(!state.running || !state.endTime){
     digitsEl.classList.remove('low');
     digitsEl.textContent = formatTime(state.durationSec);
+    if(basScreen.classList.contains('show')) hideBas();
     return;
   }
 
   const remainingMs = state.endTime - Date.now();
   const remaining = Math.max(0, Math.ceil(remainingMs / 1000));
+
+  if(remaining > 0 && basScreen.classList.contains('show')){
+    hideBas();
+  }
 
   if(remaining <= 0){
     digitsEl.textContent = '0:00';
@@ -351,10 +373,45 @@ function renderViewer(state){
   digitsEl.classList.toggle('low', remaining <= 10);
 }
 
+const fireworkLayer = document.getElementById('fireworkLayer');
+let fireworkInterval = null;
+
+function spawnBurst(){
+  const colors = ['#FF2D6F', '#2DE2FF', '#FFD23F', '#F5F3EE'];
+  const cx = 15 + Math.random() * 70;
+  const cy = 12 + Math.random() * 55;
+  const count = 16;
+  for(let i = 0; i < count; i++){
+    const s = document.createElement('div');
+    s.className = 'spark';
+    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+    const dist = 70 + Math.random() * 140;
+    s.style.left = cx + '%';
+    s.style.top = cy + '%';
+    s.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+    s.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+    s.style.background = colors[i % colors.length];
+    fireworkLayer.appendChild(s);
+    s.addEventListener('animationend', () => s.remove());
+  }
+}
+
 function triggerBas(){
   basScreen.classList.add('show');
   if(navigator.vibrate) navigator.vibrate([0,120,60,200]);
-  setTimeout(()=> basScreen.classList.remove('show'), 1600);
+  spawnBurst();
+  if(!fireworkInterval){
+    fireworkInterval = setInterval(spawnBurst, 650);
+  }
+}
+
+function hideBas(){
+  basScreen.classList.remove('show');
+  if(fireworkInterval){
+    clearInterval(fireworkInterval);
+    fireworkInterval = null;
+  }
+  fireworkLayer.innerHTML = '';
 }
 
 async function viewerLoop(){
