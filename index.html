@@ -46,7 +46,7 @@
     text-transform:uppercase;
     color:var(--cyan);
     opacity:0.9;
-    margin-bottom:32px;
+    margin-bottom:70px;
     display:flex; align-items:center; gap:12px;
   }
   .eyebrow .dot{
@@ -265,15 +265,6 @@
       </div>
     </div>
 
-    <div class="field-row">
-      <span class="field-label">TUR</span>
-      <div class="stepper">
-        <button id="roundMinus">–</button>
-        <span class="val" id="roundVal">1</span>
-        <button id="roundPlus">+</button>
-      </div>
-    </div>
-
     <div class="btn-row">
       <button class="btn btn-start" id="startBtn">BAŞLAT</button>
       <button class="btn btn-stop" id="stopBtn">DURDUR</button>
@@ -379,16 +370,13 @@ if(!isHost){
   document.getElementById('host').classList.add('active');
 
   let durationMin = 1;
-  let round = 1;
+  const round = 1;
 
   const durVal = document.getElementById('durVal');
-  const roundVal = document.getElementById('roundVal');
   const hostStatus = document.getElementById('hostStatus');
 
   document.getElementById('durMinus').onclick = ()=>{ durationMin = Math.max(1, durationMin-1); durVal.textContent = durationMin; };
   document.getElementById('durPlus').onclick = ()=>{ durationMin = Math.min(99, durationMin+1); durVal.textContent = durationMin; };
-  document.getElementById('roundMinus').onclick = ()=>{ round = Math.max(1, round-1); roundVal.textContent = round; };
-  document.getElementById('roundPlus').onclick = ()=>{ round = round+1; roundVal.textContent = round; };
 
   document.getElementById('startBtn').onclick = async ()=>{
     const durationSec = durationMin * 60;
@@ -396,10 +384,10 @@ if(!isHost){
       endTime: Date.now() + durationSec*1000,
       durationSec: durationSec,
       running: true,
-      round: round
+      round: Date.now()
     };
     await writeState(state);
-    hostStatus.textContent = 'çalışıyor — tur ' + round + ' / ' + durationMin + ' dk';
+    hostStatus.textContent = 'çalışıyor — ' + durationMin + ' dk';
   };
 
   document.getElementById('stopBtn').onclick = async ()=>{
