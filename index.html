@@ -29,8 +29,8 @@
     width:100vw; height:100vh;
     display:flex; flex-direction:column;
     align-items:center; justify-content:center;
-    padding-top:42vh;
-    gap:0;
+    gap:20px;
+    padding:16px;
     box-sizing:border-box;
   }
   #app::before{
@@ -42,18 +42,16 @@
     pointer-events:none;
   }
   .info-panel{
-    position:fixed;
-    top:0;
-    left:0;
-    right:0;
-    width:100%;
-    overflow-y:hidden;
+    position:relative;
+    width:min(720px, 90vw);
+    max-height:44vh;
+    overflow-y:auto;
     background:var(--asphalt-2);
-    border-bottom:1px solid var(--line);
-    border-radius:0 0 16px 16px;
-    padding:14px 20px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:18px 22px;
     z-index:5;
-    box-sizing:border-box;
+    flex-shrink:1;
   }
   .info-block{ margin-bottom:18px; }
   .info-block:last-child{ margin-bottom:0; }
