@@ -581,7 +581,7 @@
     window.downloadCSV = function(ep) {
       const epData = window._episodeData?.[ep];
       if (!epData) return;
-      const rows = [['Katılımcı', 'Unique Kişi', 'Toplam Emoji', 'Bölüm', 'Lokasyon']];
+      const rows = [['Yarışmacı', 'Oy Veren', 'Toplam Oy', 'Bölüm', 'Lokasyon']];
       for (const r of epData.rounds) {
         rows.push([r.participantName || '', r.uniqueCount || 0, r.totalCount || 0, ep, epData.location || '']);
       }
