@@ -41,7 +41,22 @@
       radial-gradient(circle at 80% 75%, rgba(255,255,255,0.02) 0, transparent 45%);
     pointer-events:none;
   }
-  .info-panel{
+  .location-tag{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-family:'JetBrains Mono', monospace;
+  font-size:clamp(11px,2.2vw,14px);
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  color:var(--cyan);
+  opacity:0.85;
+}
+.location-tag svg{
+  flex-shrink:0;
+  opacity:0.9;
+}
+.info-panel{
     position:relative;
     width:min(720px, 90vw);
     background:var(--asphalt-2);
@@ -347,7 +362,13 @@
 <body>
 
 <div id="app">
-  <div class="info-panel">
+  <div class="location-tag">
+  <svg width="14" height="18" viewBox="0 0 14 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M7 0C3.13 0 0 3.13 0 7C0 12.25 7 18 7 18C7 18 14 12.25 14 7C14 3.13 10.87 0 7 0ZM7 9.5C5.62 9.5 4.5 8.38 4.5 7C4.5 5.62 5.62 4.5 7 4.5C8.38 4.5 9.5 5.62 9.5 7C9.5 8.38 8.38 9.5 7 9.5Z" fill="currentColor"/>
+  </svg>
+  Beşiktaş
+</div>
+<div class="info-panel">
     <div class="info-block">
       <p class="info-title">Düet İçin Bas Nedir?</p>
       <p class="info-text">Düet İçin Bas, herkesin sesiyle katılım sağlayabildiği ve kolay bir şekilde milyonlara ulaşabileceği bir içerik formatıdır. Her bölümde 12 kişi yer alır ve bunlardan 3 kişi kazanan olur. Kazananların videoları öncelikli paylaşılır ve 15 gün sabitlenen gönderi olarak kalır.</p>
