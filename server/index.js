@@ -21,32 +21,48 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 // ── State ──────────────────────────────────────────────────────────────────────
 let currentRoundId = null;   // Firebase key for active round
 let roundActive = false;
+let roundStartTime = 0;      // eski chat mesajlarını filtrelemek için
 
-// ── Firebase helpers ───────────────────────────────────────────────────────────
-async function recordHit(platform, userId, displayName) {
-  if (!roundActive || !currentRoundId) return;
+// ── In-memory sayım + toplu Firebase yazımı ────────────────────────────────────
+// Her emoji için ayrı transaction yerine bellekte sayıp saniyede 1 kez yazıyoruz.
+// 10-20k izleyicide saniyede yüzlerce emoji gelse bile Firebase'e tek istek gider.
+let pending = null;      // { participants: Map<userId, {platform, displayName, firstSeen}>, total, dirty }
+let flushTimer = null;
 
-  const ref = db.ref(`rounds/${currentRoundId}`);
+function sanitizeKey(key) {
+  // Firebase key'lerinde . # $ / [ ] olamaz
+  return String(key).replace(/[.#$/\[\]]/g, '_');
+}
 
-  // Atomic update: increment total, set unique participant if new
-  await ref.transaction((round) => {
-    if (!round) return round;
-
-    const participants = round.participants || {};
-    const isNew = !participants[userId];
-    participants[userId] = {
+function recordHit(platform, userId, displayName) {
+  if (!roundActive || !pending) return;
+  const key = sanitizeKey(userId);
+  pending.total += 1;
+  if (!pending.participants.has(key)) {
+    pending.participants.set(key, {
       platform,
-      displayName: displayName || userId,
-      firstSeen: participants[userId]?.firstSeen || Date.now(),
-    };
+      displayName: displayName || key,
+      firstSeen: Date.now(),
+    });
+  }
+  pending.dirty = true;
+}
 
-    return {
-      ...round,
-      participants,
-      totalCount: (round.totalCount || 0) + 1,
-      uniqueCount: Object.keys(participants).length,
-    };
-  });
+async function flushRound() {
+  if (!pending || !pending.dirty || !currentRoundId) return;
+  pending.dirty = false;
+  const participantsObj = {};
+  for (const [id, p] of pending.participants) participantsObj[id] = p;
+  try {
+    await db.ref(`rounds/${currentRoundId}`).update({
+      totalCount: pending.total,
+      uniqueCount: pending.participants.size,
+      participants: participantsObj,
+    });
+  } catch (err) {
+    pending.dirty = true; // yazamadıysak sonraki flush'ta tekrar dene
+    console.error('[Firebase] Flush hatası:', err.message);
+  }
 }
 
 // ── YouTube Live Chat ──────────────────────────────────────────────────────────
@@ -54,18 +70,46 @@ const youtube = google.youtube({ version: 'v3', auth: process.env.YOUTUBE_API_KE
 let ytPollTimer = null;
 let ytChatId = null;
 let ytNextPageToken = null;
+let ytVideoIdCache = null;    // bulunan video ID — pahalı search.list'i tekrarlamamak için
+let ytVideoIdOverride = null; // host panelinden girilen video ID (search.list'e hiç gerek kalmaz)
+
+function parseYouTubeVideoId(input) {
+  if (!input) return null;
+  const s = String(input).trim();
+  // Ham 11 karakterlik ID
+  if (/^[\w-]{11}$/.test(s)) return s;
+  // watch?v=, youtu.be/, /live/ formatları
+  const m = s.match(/(?:v=|youtu\.be\/|\/live\/|\/shorts\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
+async function chatIdFromVideo(videoId) {
+  const res = await youtube.videos.list({
+    part: 'liveStreamingDetails',
+    id: videoId,
+  });
+  return res.data.items?.[0]?.liveStreamingDetails?.activeLiveChatId || null;
+}
 
 async function getActiveLiveChatId() {
-  // 1. Explicit video ID from env
-  if (process.env.YOUTUBE_VIDEO_ID) {
-    const res = await youtube.videos.list({
-      part: 'liveStreamingDetails',
-      id: process.env.YOUTUBE_VIDEO_ID,
-    });
-    return res.data.items?.[0]?.liveStreamingDetails?.activeLiveChatId || null;
+  // 1. Host panelinden girilen video (videos.list = 1 kota birimi)
+  if (ytVideoIdOverride) {
+    return chatIdFromVideo(ytVideoIdOverride);
   }
 
-  // 2. Find active broadcast from channel
+  // 2. .env'deki video ID
+  if (process.env.YOUTUBE_VIDEO_ID) {
+    return chatIdFromVideo(process.env.YOUTUBE_VIDEO_ID);
+  }
+
+  // 3. Daha önce bulunmuş video hâlâ canlı mı? (1 birim — 100 birimlik search'ten kaçın)
+  if (ytVideoIdCache) {
+    const chatId = await chatIdFromVideo(ytVideoIdCache);
+    if (chatId) return chatId;
+    ytVideoIdCache = null; // yayın bitmiş, cache'i temizle
+  }
+
+  // 4. Kanaldan aktif yayın ara (search.list = 100 kota birimi — son çare)
   if (process.env.YOUTUBE_CHANNEL_ID) {
     const res = await youtube.search.list({
       part: 'id',
@@ -76,12 +120,8 @@ async function getActiveLiveChatId() {
     });
     const videoId = res.data.items?.[0]?.id?.videoId;
     if (!videoId) return null;
-
-    const vRes = await youtube.videos.list({
-      part: 'liveStreamingDetails',
-      id: videoId,
-    });
-    return vRes.data.items?.[0]?.liveStreamingDetails?.activeLiveChatId || null;
+    ytVideoIdCache = videoId;
+    return chatIdFromVideo(videoId);
   }
 
   return null;
@@ -94,8 +134,9 @@ async function pollYouTubeChat() {
     if (!ytChatId) {
       ytChatId = await getActiveLiveChatId();
       if (!ytChatId) {
-        console.log('[YT] Aktif yayın bulunamadı, 30s sonra tekrar deneniyor...');
-        ytPollTimer = setTimeout(pollYouTubeChat, 30_000);
+        // 60s bekle — search.list 100 birim yakıyor, sık deneme günlük kotayı bitirir
+        console.log('[YT] Aktif yayın bulunamadı, 60s sonra tekrar deneniyor...');
+        ytPollTimer = setTimeout(pollYouTubeChat, 60_000);
         return;
       }
       console.log('[YT] Chat ID bulundu:', ytChatId);
@@ -112,12 +153,16 @@ async function pollYouTubeChat() {
     const pollingMs = res.data.pollingIntervalMillis || 5000;
 
     for (const item of res.data.items || []) {
+      // Round başlamadan önce atılmış mesajları sayma (önceki round'un emojileri karışmasın)
+      const publishedAt = new Date(item.snippet?.publishedAt || 0).getTime();
+      if (publishedAt < roundStartTime) continue;
+
       const text = item.snippet?.displayMessage || '';
       if (text.includes(TRIGGER_EMOJI)) {
         const userId = item.authorDetails.channelId;
         const displayName = item.authorDetails.displayName;
-        await recordHit('youtube', userId, displayName);
-        console.log(`[YT] Hit: ${displayName} (${userId})`);
+        recordHit('youtube', userId, displayName);
+        console.log(`[YT] Hit: ${displayName}`);
       }
     }
 
@@ -138,14 +183,19 @@ async function pollYouTubeChat() {
 function stopYouTubeChat() {
   clearTimeout(ytPollTimer);
   ytPollTimer = null;
-  ytNextPageToken = null;
-  // ytChatId'yi koruyalım — round tekrar başlarsa aynı yayın devam ediyor olabilir
+  // ytChatId ve ytNextPageToken'ı KORUYORUZ:
+  // aynı yayında sonraki round başlayınca chat'in kaldığı yerden devam ederiz,
+  // eski mesajlar zaten publishedAt filtresiyle eleniyor.
 }
 
 // ── TikTok Live Chat ───────────────────────────────────────────────────────────
+// Bağlantı sunucu açılır açılmaz kurulur ve yayın boyunca AÇIK kalır.
+// Round başlangıcında bağlanma gecikmesi olmaz, ilk emojiler kaçmaz.
+// Sayım zaten roundActive ile kontrol ediliyor.
 let ttConnection = null;
+let ttRetryDelay = 10_000; // yayın yokken kademeli artar (maks 2 dk), yayın açılınca sıfırlanır
 
-async function startTikTokChat() {
+function startTikTokChat() {
   if (!process.env.TIKTOK_USERNAME || !process.env.EULERSTREAM_API_KEY) {
     console.log('[TT] TIKTOK_USERNAME veya EULERSTREAM_API_KEY eksik, atlanıyor.');
     return;
@@ -159,12 +209,14 @@ async function startTikTokChat() {
     console.log('[TT] Bağlanılıyor...');
     const ws = new WebSocket(wsUrl);
     ttConnection = ws;
+    const openedAt = { t: 0 };
 
     ws.on('open', () => {
+      openedAt.t = Date.now();
       console.log('[TT] Bağlandı:', process.env.TIKTOK_USERNAME);
     });
 
-    ws.on('message', async (raw) => {
+    ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
         for (const evt of (msg.messages || [])) {
@@ -174,38 +226,36 @@ async function startTikTokChat() {
           const comment = d.comment || '';
           if (!comment.includes(TRIGGER_EMOJI)) continue;
           const user = d.user || {};
-          const userId = String(user.userId || user.openId || Math.random());
-          const displayName = user.nickname || userId;
-          await recordHit('tiktok', `tt_${userId}`, displayName);
+          // Sabit bir kimlik bul — yoksa sayma (rastgele ID dedup'u bozar)
+          const userId = user.userId || user.openId || user.uniqueId || user.nickname;
+          if (!userId) continue;
+          const displayName = user.nickname || String(userId);
+          recordHit('tiktok', `tt_${userId}`, displayName);
           console.log(`[TT] Hit: ${displayName} — "${comment}"`);
         }
       } catch (_) {}
     });
 
     ws.on('close', () => {
-      console.log('[TT] Bağlantı kesildi, 10s sonra yeniden deneniyor...');
       ttConnection = null;
-      if (roundActive) setTimeout(connect, 10_000);
+      // 1 dk'dan uzun açık kaldıysa yayın vardı → hızlı yeniden bağlan.
+      // Hemen düştüyse yayın yok → bekleme süresini kademeli artır (maks 2 dk).
+      if (openedAt.t && Date.now() - openedAt.t > 60_000) ttRetryDelay = 10_000;
+      else ttRetryDelay = Math.min(ttRetryDelay * 2, 120_000);
+      console.log(`[TT] Bağlantı kesildi, ${Math.round(ttRetryDelay / 1000)}s sonra yeniden deneniyor...`);
+      setTimeout(connect, ttRetryDelay);
     });
 
     ws.on('error', (err) => {
       console.warn('[TT] WebSocket hatası:', err.message);
-      ttConnection = null;
     });
   }
 
   connect();
 }
 
-function stopTikTokChat() {
-  if (ttConnection) {
-    try { ttConnection.close(); } catch (_) {}
-    ttConnection = null;
-  }
-}
-
 // ── Round management ───────────────────────────────────────────────────────────
-async function startRound(participantName, emoji, episode, location) {
+async function startRound(participantName, emoji, episode, location, youtubeVideo) {
   if (roundActive) {
     console.log('[Round] Zaten aktif round var, önce bitirin.');
     return { error: 'Round zaten aktif' };
@@ -213,16 +263,31 @@ async function startRound(participantName, emoji, episode, location) {
 
   const triggerEmoji = emoji || DEFAULT_EMOJI;
   TRIGGER_EMOJI = triggerEmoji; // chat dinleyicisini güncelle
+
+  // Host panelinden YouTube linki girildiyse kullan (kota dostu)
+  const parsedVideoId = parseYouTubeVideoId(youtubeVideo);
+  if (parsedVideoId && parsedVideoId !== ytVideoIdOverride) {
+    ytVideoIdOverride = parsedVideoId;
+    ytChatId = null; // yeni video → chat ID'yi yeniden bul
+    ytNextPageToken = null;
+    console.log('[YT] Video ID panelden alındı:', parsedVideoId);
+  }
+
   const roundRef = db.ref('rounds').push();
   currentRoundId = roundRef.key;
+  roundStartTime = Date.now();
   roundActive = true;
+
+  // Bellekte sayım başlat
+  pending = { participants: new Map(), total: 0, dirty: false };
+  flushTimer = setInterval(flushRound, 1000);
 
   const roundData = {
     participantName: participantName || 'Katılımcı',
     emoji: triggerEmoji,
     episode: episode || '',
     location: location || '',
-    startTime: Date.now(),
+    startTime: roundStartTime,
     active: true,
     totalCount: 0,
     uniqueCount: 0,
@@ -234,10 +299,10 @@ async function startRound(participantName, emoji, episode, location) {
 
   console.log(`\n[Round] BAŞLADI → ${participantName} | Emoji: ${triggerEmoji} | ID: ${currentRoundId}`);
 
-  // Chat okumayı başlat
-  ytNextPageToken = null; // Yeni round = yeni mesajlardan başla
+  // Chat okumayı başlat (TikTok zaten sürekli bağlı)
   pollYouTubeChat();
-  await startTikTokChat();
+  ttRetryDelay = 10_000; // round başlıyor → TikTok'a hızlı bağlanmayı dene
+  startTikTokChat(); // bağlantı koptuysa güvence
 
   return { roundId: currentRoundId, participantName, emoji: triggerEmoji };
 }
@@ -247,28 +312,37 @@ async function stopRound() {
     return { error: 'Aktif round yok' };
   }
 
+  roundActive = false; // önce sayımı durdur
   stopYouTubeChat();
-  stopTikTokChat();
+
+  // Son sayıları bellekten al ve Firebase'e kesin yaz
+  clearInterval(flushTimer);
+  flushTimer = null;
+  if (pending && pending.total > 0) pending.dirty = true;
+  await flushRound();
+
+  const uniqueCount = pending ? pending.participants.size : 0;
+  const totalCount = pending ? pending.total : 0;
 
   const roundRef = db.ref(`rounds/${currentRoundId}`);
   await roundRef.update({ active: false, endTime: Date.now() });
   await db.ref('currentRound').remove();
 
   const snapshot = await roundRef.once('value');
-  const result = snapshot.val();
+  const result = snapshot.val() || {};
 
-  console.log(`[Round] BİTTİ → Unique: ${result.uniqueCount} | Toplam: ${result.totalCount}`);
+  console.log(`[Round] BİTTİ → Unique: ${uniqueCount} | Toplam: ${totalCount}`);
 
-  roundActive = false;
   const finishedId = currentRoundId;
   currentRoundId = null;
+  pending = null;
 
   return {
     roundId: finishedId,
     participantName: result.participantName,
     emoji: result.emoji,
-    uniqueCount: result.uniqueCount,
-    totalCount: result.totalCount,
+    uniqueCount,
+    totalCount,
   };
 }
 
@@ -287,13 +361,13 @@ app.get('/status', (req, res) => {
     currentRoundId,
     triggerEmoji: TRIGGER_EMOJI,
     youtube: !!ytChatId,
-    tiktok: !!ttConnection,
+    tiktok: !!(ttConnection && ttConnection.readyState === WebSocket.OPEN),
   });
 });
 
 app.post('/round/start', async (req, res) => {
-  const { participantName, emoji, episode, location } = req.body;
-  const result = await startRound(participantName, emoji, episode, location);
+  const { participantName, emoji, episode, location, youtubeVideo } = req.body;
+  const result = await startRound(participantName, emoji, episode, location, youtubeVideo);
   res.json(result);
 });
 
@@ -320,4 +394,7 @@ app.listen(PORT, () => {
   console.log(`   Emoji   : ${TRIGGER_EMOJI}`);
   console.log(`   YouTube : ${process.env.YOUTUBE_API_KEY ? '✓' : '✗ API key yok'}`);
   console.log(`   TikTok  : ${process.env.TIKTOK_USERNAME ? process.env.TIKTOK_USERNAME : '✗ username yok'}\n`);
+
+  // TikTok'a hemen bağlan — round beklemeden hazır ol
+  startTikTokChat();
 });

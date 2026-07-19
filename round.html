@@ -377,6 +377,8 @@
     <input type="text" id="input-episode" placeholder="1, 2, 3 ..." />
     <label>Lokasyon</label>
     <input type="text" id="input-location" placeholder="Beşiktaş, Paris ..." />
+    <label>YouTube yayın linki (opsiyonel — kotayı korur)</label>
+    <input type="text" id="input-ytvideo" placeholder="https://youtube.com/watch?v=..." />
   </div>
 
   <div class="host-section">
@@ -448,6 +450,7 @@
   const inputEmoji   = document.getElementById('input-emoji');
   const inputEpisode = document.getElementById('input-episode');
   const inputLocation= document.getElementById('input-location');
+  const inputYtVideo = document.getElementById('input-ytvideo');
   const historyEl    = document.getElementById('history-list');
 
   const serverUrlEl = document.getElementById('server-url');
@@ -601,13 +604,14 @@
       const emoji    = inputEmoji.value.trim() || '🤍';
       const episode  = inputEpisode.value.trim();
       const location = inputLocation.value.trim();
+      const youtubeVideo = inputYtVideo.value.trim();
       btnStart.disabled = true;
       btnStart.textContent = '⏳ Başlatılıyor...';
       try {
         const r = await fetch(`${serverUrl()}/round/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ participantName: name, emoji, episode, location }),
+          body: JSON.stringify({ participantName: name, emoji, episode, location, youtubeVideo }),
         });
         const data = await r.json();
         if (data.error) alert('Hata: ' + data.error);
