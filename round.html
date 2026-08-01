@@ -61,6 +61,19 @@
     .dot.on  { background: #0f0; box-shadow: 0 0 6px #0f0; }
     .dot.off { background: #f00; }
 
+    #btn-reconnect {
+      background: rgba(0,245,255,0.1);
+      border: 1px solid var(--neon-cyan);
+      border-radius: 6px;
+      color: var(--neon-cyan);
+      font-size: 0.68rem;
+      padding: 4px 10px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      font-family: inherit;
+    }
+    #btn-reconnect:active { transform: scale(0.96); }
+
     /* ── Live counter card ── */
     #live-card {
       background: var(--panel);
@@ -340,6 +353,7 @@
 <div id="status-bar">
   <span><span class="dot" id="dot-yt"></span> YouTube</span>
   <span><span class="dot" id="dot-tt"></span> TikTok</span>
+  <button id="btn-reconnect" style="display:none">↻ TikTok'a bağlan</button>
   <span id="status-round" style="color:#555">● Bekleniyor</span>
 </div>
 
@@ -455,6 +469,17 @@
 
   const serverUrlEl = document.getElementById('server-url');
   const pingEl      = document.getElementById('server-ping');
+  const btnReconnect= document.getElementById('btn-reconnect');
+
+  // Yayını açtıktan sonra beklemeden TikTok'a bağlan
+  btnReconnect.addEventListener('click', async () => {
+    btnReconnect.textContent = '⏳ Bağlanılıyor...';
+    try {
+      await fetch(`${serverUrl()}/tiktok/reconnect`, { method: 'POST' });
+      setTimeout(pingServer, 2500);
+    } catch {}
+    setTimeout(() => { btnReconnect.textContent = '↻ TikTok\'a bağlan'; }, 3000);
+  });
 
   function serverUrl() { return (serverUrlEl.value || 'http://localhost:3001').replace(/\/$/, ''); }
 
@@ -467,6 +492,8 @@
       pingEl.className = 'ok';
       dotYt.className = 'dot ' + (data.youtube ? 'on' : 'off');
       dotTt.className = 'dot ' + (data.tiktok  ? 'on' : 'off');
+      // TikTok bağlı değilse host'a "bağlan" butonunu göster
+      if (isHost) btnReconnect.style.display = data.tiktok ? 'none' : '';
     } catch {
       pingEl.textContent = '● Backend bağlanamıyor — node server/index.js çalışıyor mu?';
       pingEl.className = 'err';

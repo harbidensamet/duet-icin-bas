@@ -365,6 +365,17 @@ app.get('/status', (req, res) => {
   });
 });
 
+// Yayını açtıktan sonra beklemeden bağlanmak için (host paneldeki buton)
+app.post('/tiktok/reconnect', (req, res) => {
+  ttRetryDelay = 10_000;
+  if (ttConnection) {
+    try { ttConnection.close(); } catch (_) {}
+    ttConnection = null;
+  }
+  startTikTokChat();
+  res.json({ ok: true });
+});
+
 app.post('/round/start', async (req, res) => {
   const { participantName, emoji, episode, location, youtubeVideo } = req.body;
   const result = await startRound(participantName, emoji, episode, location, youtubeVideo);
