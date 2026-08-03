@@ -258,7 +258,7 @@ function startTikTokChat() {
 async function startRound(participantName, emoji, episode, location, youtubeVideo) {
   if (roundActive) {
     console.log('[Round] Zaten aktif round var, önce bitirin.');
-    return { error: 'Round zaten aktif' };
+    return { error: 'Zaten aktif bir oylama var' };
   }
 
   const triggerEmoji = emoji || DEFAULT_EMOJI;
@@ -309,7 +309,7 @@ async function startRound(participantName, emoji, episode, location, youtubeVide
 
 async function stopRound() {
   if (!roundActive || !currentRoundId) {
-    return { error: 'Aktif round yok' };
+    return { error: 'Aktif oylama yok' };
   }
 
   roundActive = false; // önce sayımı durdur

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Düet İçin Bas — Round Takip</title>
+  <title>Düet İçin Bas — Oylama Takip</title>
   <style>
     :root {
       --neon-pink:   #ff2d78;
@@ -347,7 +347,7 @@
 <body>
 
 <h1>🎵 Düet İçin Bas</h1>
-<p class="subtitle">ROUND TAKİP SİSTEMİ</p>
+<p class="subtitle">OYLAMA TAKİP SİSTEMİ</p>
 
 <!-- Status bar -->
 <div id="status-bar">
@@ -362,7 +362,7 @@
   <div id="round-label">ŞU AN</div>
   <div id="participant-name"></div>
   <div id="round-emoji"></div>
-  <div id="idle-msg">Henüz aktif round yok</div>
+  <div id="idle-msg">Henüz aktif oylama yok</div>
   <div class="metrics" id="metrics" style="display:none">
     <div class="metric unique">
       <div class="val" id="val-unique">0</div>
@@ -396,22 +396,22 @@
   </div>
 
   <div class="host-section">
-    <h2>Yeni Round</h2>
+    <h2>Yeni Oylama</h2>
     <label>Katılımcı adı</label>
     <input type="text" id="input-name" placeholder="Ahmet, Buse, ..." />
     <label>Tetikleyici emoji</label>
     <input type="text" id="input-emoji" placeholder="🤍" value="🤍" />
-    <button class="btn btn-start" id="btn-start">▶ Round Başlat</button>
+    <button class="btn btn-start" id="btn-start">▶ Oylama Başlat</button>
   </div>
 
   <div class="host-section">
-    <h2>Aktif Round</h2>
-    <button class="btn btn-stop" id="btn-stop" disabled>◼ Round Bitir</button>
+    <h2>Aktif Oylama</h2>
+    <button class="btn btn-stop" id="btn-stop" disabled>◼ Oylama Bitir</button>
   </div>
 
   <div class="host-section">
     <h2>Bölümlere Göre Katılımcılar</h2>
-    <div id="history-list"><p style="color:#444;font-size:.8rem">Henüz tamamlanan round yok</p></div>
+    <div id="history-list"><p style="color:#444;font-size:.8rem">Henüz tamamlanan oylama yok</p></div>
   </div>
 
 </div>
@@ -528,7 +528,7 @@
     emojiEl.textContent       = roundData.emoji || '';
     idleMsg.style.display     = 'none';
     metricsEl.style.display   = '';
-    statusRound.textContent   = '🔴 CANLI ROUND';
+    statusRound.textContent   = '🔴 CANLI OYLAMA';
     statusRound.style.color   = '#ff2d78';
     if (isHost) {
       btnStart.disabled = true;
@@ -647,11 +647,11 @@
         alert('Backend\'e ulaşılamıyor. Server çalışıyor mu?\n' + e.message);
         btnStart.disabled = false;
       }
-      btnStart.textContent = '▶ Round Başlat';
+      btnStart.textContent = '▶ Oylama Başlat';
     });
 
     btnStop.addEventListener('click', async () => {
-      if (!confirm('Round\'u bitirmek istediğinizden emin misiniz?')) return;
+      if (!confirm('Oylamayı bitirmek istediğinizden emin misiniz?')) return;
       btnStop.disabled = true;
       btnStop.textContent = '⏳ Bitiriliyor...';
       try {
@@ -665,7 +665,7 @@
       } catch (e) {
         alert('Backend\'e ulaşılamıyor.\n' + e.message);
       }
-      btnStop.textContent = '◼ Round Bitir';
+      btnStop.textContent = '◼ Oylama Bitir';
     });
   }
 
