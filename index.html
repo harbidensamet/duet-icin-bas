@@ -465,7 +465,14 @@
       </div>
     </div>
 
-    <div class="btn-row">
+    <div class="field-row" style="flex-direction:column; align-items:stretch; gap:8px;">
+<span class="field-label">HEDEF ZAMAN — tarih + saat seç</span>
+<input type="datetime-local" id="targetTime" style="font-family:'JetBrains Mono',monospace;font-size:15px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--asphalt);color:var(--paper);width:100%;box-sizing:border-box;">
+</div>
+<div class="btn-row" style="margin-bottom:16px;">
+<button class="btn btn-start" id="targetStartBtn">SEÇİLEN ZAMANA GÖRE BAŞLAT</button>
+</div>
+<div class="btn-row">
       <button class="btn btn-start" id="startBtn">BAŞLAT</button>
       <button class="btn btn-stop" id="stopBtn">DURDUR</button>
     </div>
@@ -687,6 +694,38 @@ if(!isHost){
     const state = { endTime:null, durationSec:durationSec, running:false, round:round };
     await writeState(state);
     hostStatus.textContent = 'sıfırlandı';
+  };
+}
+
+if(isHost){
+  const targetInput = document.getElementById('targetTime');
+  const targetBtn = document.getElementById('targetStartBtn');
+  const st2 = document.getElementById('hostStatus');
+
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function toLocalValue(dt){
+    return dt.getFullYear() + '-' + pad2(dt.getMonth()+1) + '-' + pad2(dt.getDate()) + 'T' + pad2(dt.getHours()) + ':' + pad2(dt.getMinutes());
+  }
+
+  const nowD = new Date();
+  targetInput.min = toLocalValue(nowD);
+  const suggest = new Date();
+  suggest.setHours(19,0,0,0);
+  if(suggest.getTime() <= Date.now()) suggest.setDate(suggest.getDate()+1);
+  targetInput.value = toLocalValue(suggest);
+
+  targetBtn.onclick = async ()=>{
+    if(!targetInput.value){ st2.textContent = 'once tarih ve saat sec'; return; }
+    const end = new Date(targetInput.value).getTime();
+    const now = Date.now();
+    if(!end || isNaN(end)){ st2.textContent = 'gecersiz zaman'; return; }
+    if(end <= now){ st2.textContent = 'gecmis bir zaman sectin'; return; }
+    const durationSec = Math.round((end - now)/1000);
+    await writeState({ endTime: end, durationSec: durationSec, running: true, round: Date.now() });
+    const dd = Math.floor(durationSec/86400);
+    const hh = Math.floor((durationSec%86400)/3600);
+    const mm = Math.floor((durationSec%3600)/60);
+    st2.textContent = 'calisiyor — ' + (dd ? dd + 'g ' : '') + hh + 's ' + mm + 'dk kaldi';
   };
 }
 </script>
